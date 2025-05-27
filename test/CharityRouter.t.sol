@@ -94,4 +94,85 @@ contract CharityRouterTest is Test {
         assertEq(router.owner(), address(0));
         assertEq(router.pendingOwner(), address(0));
     }
+
+    // ===== STEP 2 TESTS: Charity Data Structures & Storage =====
+
+    function testStep2_CharityStructCreation() public {
+        // Test that we can create and access charity struct
+        // Since no charities are registered, all values should be default
+        address nonExistentAddr = makeAddr("nonExistent");
+        CharityRouter.Charity memory emptyCharity = router.getCharityByAddress(nonExistentAddr);
+        
+        assertEq(emptyCharity.name, "");
+        assertEq(emptyCharity.walletAddress, address(0));
+        assertEq(emptyCharity.isActive, false);
+        assertEq(emptyCharity.totalEthReceived, 0);
+        assertEq(emptyCharity.donationCount, 0);
+        assertEq(emptyCharity.registeredAt, 0);
+    }
+
+    function testStep2_GetCharityByAddressEmpty() public {
+        // Test getter returns empty struct for non-existent charity
+        address nonExistentAddress = makeAddr("nonExistent");
+        CharityRouter.Charity memory charity = router.getCharityByAddress(nonExistentAddress);
+        
+        assertEq(charity.name, "");
+        assertEq(charity.walletAddress, address(0));
+        assertEq(charity.isActive, false);
+        assertEq(charity.totalEthReceived, 0);
+        assertEq(charity.donationCount, 0);
+        assertEq(charity.registeredAt, 0);
+    }
+
+    function testStep2_GetCharityByNameEmpty() public view {
+        // Test getter returns empty struct for non-existent charity name
+        CharityRouter.Charity memory charity = router.getCharityByName("NonExistentCharity");
+        
+        assertEq(charity.name, "");
+        assertEq(charity.walletAddress, address(0));
+        assertEq(charity.isActive, false);
+        assertEq(charity.totalEthReceived, 0);
+        assertEq(charity.donationCount, 0);
+        assertEq(charity.registeredAt, 0);
+    }
+
+    function testStep2_GetCharityCount() public view {
+        // Test charity count is initially zero
+        assertEq(router.getCharityCount(), 0);
+    }
+
+    function testStep2_StorageMappingsExist() public {
+        // Test that storage mappings are accessible (they return default values)
+        address testAddress = makeAddr("test");
+        
+        // Test charitiesByAddress mapping
+        (
+            string memory name,
+            address payable walletAddress,
+            bool isActive,
+            uint256 totalEthReceived,
+            uint256 donationCount,
+            uint256 registeredAt
+        ) = router.charitiesByAddress(testAddress);
+        
+        assertEq(name, "");
+        assertEq(walletAddress, address(0));
+        assertEq(isActive, false);
+        assertEq(totalEthReceived, 0);
+        assertEq(donationCount, 0);
+        assertEq(registeredAt, 0);
+        
+        // Test charitiesByName mapping
+        address mappedAddress = router.charitiesByName("TestCharity");
+        assertEq(mappedAddress, address(0));
+    }
+
+    function testStep2_CharityAddressesArray() public {
+        // Test charityAddresses array is initially empty
+        assertEq(router.getCharityCount(), 0);
+        
+        // Test we can't access non-existent array elements
+        vm.expectRevert();
+        router.charityAddresses(0);
+    }
 }
