@@ -46,6 +46,17 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
     /// @notice Array of all registered charity addresses
     address[] public charityAddresses;
     
+    // ===== DONATION TRACKING =====
+    
+    /// @notice Total number of donations processed
+    uint256 public totalDonations;
+    
+    /// @notice Next donation ID to be assigned
+    uint256 public nextDonationId;
+    
+    /// @notice Total amount of ETH routed through the contract
+    uint256 public totalEthRouted;
+    
     // ===== EVENTS =====
     
     /**
@@ -92,6 +103,22 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
         bool isActive
     );
     
+    /**
+     * @notice Emitted when a donation is routed to a charity
+     * @param donationId Unique identifier for this donation
+     * @param donor Address of the donor
+     * @param charity Address of the charity that received the donation
+     * @param amount Amount of ETH donated
+     * @param charityName Name of the charity
+     */
+    event DonationRouted(
+        uint256 indexed donationId,
+        address indexed donor,
+        address indexed charity,
+        uint256 amount,
+        string charityName
+    );
+    
     // ===== ERRORS =====
     
     /// @notice Thrown when trying to register a charity with zero address
@@ -112,6 +139,15 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
     /// @notice Thrown when array lengths don't match in batch operations
     error ArrayLengthMismatch();
     
+    /// @notice Thrown when trying to donate to an inactive charity
+    error InactiveCharity();
+    
+    /// @notice Thrown when trying to donate zero ETH
+    error EmptyDonation();
+    
+    /// @notice Thrown when ETH transfer to charity fails
+    error TransferFailed();
+    
     // ===== CONSTRUCTOR =====
     
     /**
@@ -120,6 +156,78 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
      */
     constructor(address _initialOwner) Ownable(_initialOwner) {
         // Constructor sets initial owner via Ownable
+        // Donation counters start at 0 by default
+        nextDonationId = 1; // Start donation IDs at 1
+    }
+    
+    // ===== DONATION FUNCTIONS =====
+    
+    /**
+     * @notice Donate ETH to a charity by address
+     * @param _charityAddress Address of the charity to donate to
+     * @dev ETH is immediately transferred to the charity wallet
+     */
+    function donate(address _charityAddress) external payable nonReentrant {
+        // Validate donation amount
+        if (msg.value == 0) {
+            revert EmptyDonation();
+        }
+        
+        // Validate charity
+        _validateCharityForDonation(_charityAddress);
+        
+        // Process the donation
+        _processDonation(_charityAddress, msg.value);
+    }
+    
+    // ===== INTERNAL HELPER FUNCTIONS =====
+    
+    /**
+     * @notice Validate that a charity can receive donations
+     * @param _charityAddress Address of the charity to validate
+     */
+    function _validateCharityForDonation(address _charityAddress) internal view {
+        // Check if charity exists
+        if (charitiesByAddress[_charityAddress].walletAddress == address(0)) {
+            revert CharityNotFound();
+        }
+        
+        // Check if charity is active
+        if (!charitiesByAddress[_charityAddress].isActive) {
+            revert InactiveCharity();
+        }
+    }
+    
+    /**
+     * @notice Process a donation to a charity
+     * @param _charityAddress Address of the charity
+     * @param _amount Amount of ETH to donate
+     */
+    function _processDonation(address _charityAddress, uint256 _amount) internal {
+        // Get charity info
+        Charity storage charity = charitiesByAddress[_charityAddress];
+        
+        // Update donation statistics
+        uint256 donationId = nextDonationId++;
+        totalDonations++;
+        totalEthRouted += _amount;
+        charity.totalEthReceived += _amount;
+        charity.donationCount++;
+        
+        // Transfer ETH directly to charity
+        (bool success, ) = charity.walletAddress.call{value: _amount}("");
+        if (!success) {
+            revert TransferFailed();
+        }
+        
+        // Emit donation event
+        emit DonationRouted(
+            donationId,
+            msg.sender,
+            _charityAddress,
+            _amount,
+            charity.name
+        );
     }
     
     // ===== ADMIN FUNCTIONS =====
@@ -356,5 +464,19 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
      */
     function getCharityCount() external view returns (uint256) {
         return charityAddresses.length;
+    }
+    
+    /**
+     * @notice Get donation statistics
+     * @return totalDonations_ Total number of donations processed
+     * @return totalEthRouted_ Total amount of ETH routed
+     * @return nextDonationId_ Next donation ID to be assigned
+     */
+    function getDonationStats() external view returns (
+        uint256 totalDonations_,
+        uint256 totalEthRouted_,
+        uint256 nextDonationId_
+    ) {
+        return (totalDonations, totalEthRouted, nextDonationId);
     }
 }
