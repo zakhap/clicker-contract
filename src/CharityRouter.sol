@@ -180,6 +180,27 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
         _processDonation(_charityAddress, msg.value);
     }
     
+    /**
+     * @notice Donate ETH to a charity by name
+     * @param _charityName Name of the charity to donate to
+     * @dev ETH is immediately transferred to the charity wallet
+     */
+    function donateByName(string memory _charityName) external payable nonReentrant {
+        // Validate donation amount
+        if (msg.value == 0) {
+            revert EmptyDonation();
+        }
+        
+        // Resolve charity name to address
+        address charityAddress = charitiesByName[_charityName];
+        
+        // Validate charity exists and is active
+        _validateCharityForDonation(charityAddress);
+        
+        // Process the donation
+        _processDonation(charityAddress, msg.value);
+    }
+    
     // ===== INTERNAL HELPER FUNCTIONS =====
     
     /**
