@@ -500,4 +500,100 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
     ) {
         return (totalDonations, totalEthRouted, nextDonationId);
     }
+    
+    /**
+     * @notice Get all registered charity addresses
+     * @return Array of charity addresses
+     * @dev Includes removed charities (with zero addresses) to preserve indices
+     */
+    function getAllCharities() external view returns (address[] memory) {
+        return charityAddresses;
+    }
+    
+    /**
+     * @notice Get detailed statistics for a specific charity
+     * @param _charityAddress Address of the charity
+     * @return name_ Name of the charity
+     * @return isActive_ Whether the charity is currently active
+     * @return totalEthReceived_ Total ETH received by this charity
+     * @return donationCount_ Number of donations made to this charity
+     * @return registeredAt_ Timestamp when charity was registered
+     */
+    function getCharityStats(address _charityAddress) external view returns (
+        string memory name_,
+        bool isActive_,
+        uint256 totalEthReceived_,
+        uint256 donationCount_,
+        uint256 registeredAt_
+    ) {
+        Charity memory charity = charitiesByAddress[_charityAddress];
+        return (
+            charity.name,
+            charity.isActive,
+            charity.totalEthReceived,
+            charity.donationCount,
+            charity.registeredAt
+        );
+    }
+    
+    /**
+     * @notice Get comprehensive global statistics
+     * @return totalCharities_ Total number of registered charities
+     * @return activeCharities_ Number of currently active charities
+     * @return totalDonations_ Total number of donations processed
+     * @return totalEthRouted_ Total amount of ETH routed through the contract
+     * @return averageDonationSize_ Average donation size in wei
+     */
+    function getTotalStats() external view returns (
+        uint256 totalCharities_,
+        uint256 activeCharities_,
+        uint256 totalDonations_,
+        uint256 totalEthRouted_,
+        uint256 averageDonationSize_
+    ) {
+        uint256 activeCount = 0;
+        
+        // Count active charities
+        for (uint256 i = 0; i < charityAddresses.length; i++) {
+            if (charitiesByAddress[charityAddresses[i]].isActive && 
+                charitiesByAddress[charityAddresses[i]].walletAddress != address(0)) {
+                activeCount++;
+            }
+        }
+        
+        // Calculate average donation size
+        uint256 avgDonation = 0;
+        if (totalDonations > 0) {
+            avgDonation = totalEthRouted / totalDonations;
+        }
+        
+        return (
+            charityAddresses.length,
+            activeCount,
+            totalDonations,
+            totalEthRouted,
+            avgDonation
+        );
+    }
+    
+    /**
+     * @notice Check if a charity address is valid and active
+     * @param _charityAddress Address to check
+     * @return True if charity exists and is active
+     */
+    function isValidCharity(address _charityAddress) external view returns (bool) {
+        return charitiesByAddress[_charityAddress].walletAddress != address(0) && 
+               charitiesByAddress[_charityAddress].isActive;
+    }
+    
+    /**
+     * @notice Check if a charity name is valid and active
+     * @param _charityName Name to check
+     * @return True if charity name exists and is active
+     */
+    function isValidCharityName(string memory _charityName) external view returns (bool) {
+        address charityAddress = charitiesByName[_charityName];
+        return charitiesByAddress[charityAddress].walletAddress != address(0) && 
+               charitiesByAddress[charityAddress].isActive;
+    }
 }
