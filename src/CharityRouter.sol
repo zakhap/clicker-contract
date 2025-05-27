@@ -60,6 +60,38 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
         uint256 timestamp
     );
     
+    /**
+     * @notice Emitted when a charity's information is updated
+     * @param charityAddress Address of the charity
+     * @param oldName Previous name of the charity
+     * @param newName New name of the charity
+     */
+    event CharityUpdated(
+        address indexed charityAddress,
+        string oldName,
+        string newName
+    );
+    
+    /**
+     * @notice Emitted when a charity is removed from the registry
+     * @param charityAddress Address of the charity that was removed
+     * @param name Name of the charity that was removed
+     */
+    event CharityRemoved(
+        address indexed charityAddress,
+        string name
+    );
+    
+    /**
+     * @notice Emitted when a charity's active status changes
+     * @param charityAddress Address of the charity
+     * @param isActive New active status
+     */
+    event CharityStatusChanged(
+        address indexed charityAddress,
+        bool isActive
+    );
+    
     // ===== ERRORS =====
     
     /// @notice Thrown when trying to register a charity with zero address
@@ -70,6 +102,12 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
     
     /// @notice Thrown when trying to register a charity that already exists
     error CharityAlreadyExists();
+    
+    /// @notice Thrown when trying to operate on a charity that doesn't exist
+    error CharityNotFound();
+    
+    /// @notice Thrown when trying to update a charity name to one that already exists
+    error NameAlreadyTaken();
     
     // ===== CONSTRUCTOR =====
     
@@ -125,6 +163,89 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
         
         // Emit event
         emit CharityAdded(_walletAddress, _name, block.timestamp);
+    }
+    
+    /**
+     * @notice Update a charity's name
+     * @param _charityAddress Address of the charity to update
+     * @param _newName New name for the charity
+     * @dev Only contract owner can call this function
+     */
+    function updateCharity(address _charityAddress, string memory _newName) external onlyOwner {
+        // Check if charity exists
+        if (charitiesByAddress[_charityAddress].walletAddress == address(0)) {
+            revert CharityNotFound();
+        }
+        
+        // Validate new name
+        if (bytes(_newName).length == 0) {
+            revert EmptyCharityName();
+        }
+        
+        // Check if new name is already taken (but not by the same charity)
+        if (charitiesByName[_newName] != address(0) && charitiesByName[_newName] != _charityAddress) {
+            revert NameAlreadyTaken();
+        }
+        
+        // Get old name
+        string memory oldName = charitiesByAddress[_charityAddress].name;
+        
+        // Update name in charity struct
+        charitiesByAddress[_charityAddress].name = _newName;
+        
+        // Update name mapping - remove old name and add new name
+        delete charitiesByName[oldName];
+        charitiesByName[_newName] = _charityAddress;
+        
+        // Emit event
+        emit CharityUpdated(_charityAddress, oldName, _newName);
+    }
+    
+    /**
+     * @notice Remove a charity from the registry
+     * @param _charityAddress Address of the charity to remove
+     * @dev Only contract owner can call this function. Sets address to zero.
+     */
+    function removeCharity(address _charityAddress) external onlyOwner {
+        // Check if charity exists
+        if (charitiesByAddress[_charityAddress].walletAddress == address(0)) {
+            revert CharityNotFound();
+        }
+        
+        // Get charity name for event
+        string memory charityName = charitiesByAddress[_charityAddress].name;
+        
+        // Remove from name mapping
+        delete charitiesByName[charityName];
+        
+        // Set wallet address to zero (marking as removed)
+        charitiesByAddress[_charityAddress].walletAddress = payable(address(0));
+        charitiesByAddress[_charityAddress].isActive = false;
+        
+        // Note: We don't remove from charityAddresses array to preserve donation history
+        // and avoid gas-expensive array operations
+        
+        // Emit event
+        emit CharityRemoved(_charityAddress, charityName);
+    }
+    
+    /**
+     * @notice Set a charity's active status
+     * @param _charityAddress Address of the charity
+     * @param _isActive New active status
+     * @dev Only contract owner can call this function
+     */
+    function setCharityStatus(address _charityAddress, bool _isActive) external onlyOwner {
+        // Check if charity exists
+        if (charitiesByAddress[_charityAddress].walletAddress == address(0)) {
+            revert CharityNotFound();
+        }
+        
+        // Update status
+        charitiesByAddress[_charityAddress].isActive = _isActive;
+        
+        // Emit event
+        emit CharityStatusChanged(_charityAddress, _isActive);
     }
     
     // ===== VIEW FUNCTIONS =====
