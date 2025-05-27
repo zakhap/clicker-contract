@@ -109,6 +109,9 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
     /// @notice Thrown when trying to update a charity name to one that already exists
     error NameAlreadyTaken();
     
+    /// @notice Thrown when array lengths don't match in batch operations
+    error ArrayLengthMismatch();
+    
     // ===== CONSTRUCTOR =====
     
     /**
@@ -163,6 +166,76 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
         
         // Emit event
         emit CharityAdded(_walletAddress, _name, block.timestamp);
+    }
+    
+    /**
+     * @notice Add multiple charities to the registry in a single transaction
+     * @param _names Array of charity names
+     * @param _walletAddresses Array of charity wallet addresses
+     * @dev Only contract owner can call this function. Arrays must be same length.
+     */
+    function addCharitiesBatch(
+        string[] memory _names, 
+        address payable[] memory _walletAddresses
+    ) external onlyOwner {
+        // Validate array lengths match
+        if (_names.length != _walletAddresses.length) {
+            revert ArrayLengthMismatch();
+        }
+        
+        // Validate arrays are not empty  
+        if (_names.length == 0) {
+            revert EmptyCharityName(); // Reuse existing error for empty input
+        }
+        
+        // Process each charity
+        for (uint256 i = 0; i < _names.length; i++) {
+            // Validate inputs (same validation as single add)
+            if (_walletAddresses[i] == address(0)) {
+                revert InvalidCharityAddress();
+            }
+            
+            if (bytes(_names[i]).length == 0) {
+                revert EmptyCharityName();
+            }
+            
+            // Check for duplicates (existing and within current batch)
+            if (charitiesByAddress[_walletAddresses[i]].walletAddress != address(0)) {
+                revert CharityAlreadyExists();
+            }
+            
+            if (charitiesByName[_names[i]] != address(0)) {
+                revert CharityAlreadyExists();
+            }
+            
+            // Check for duplicates within the current batch
+            for (uint256 j = 0; j < i; j++) {
+                if (_walletAddresses[i] == _walletAddresses[j]) {
+                    revert CharityAlreadyExists();
+                }
+                if (keccak256(bytes(_names[i])) == keccak256(bytes(_names[j]))) {
+                    revert CharityAlreadyExists();
+                }
+            }
+            
+            // Create charity struct
+            Charity memory newCharity = Charity({
+                name: _names[i],
+                walletAddress: _walletAddresses[i],
+                isActive: true,
+                totalEthReceived: 0,
+                donationCount: 0,
+                registeredAt: block.timestamp
+            });
+            
+            // Store in mappings
+            charitiesByAddress[_walletAddresses[i]] = newCharity;
+            charitiesByName[_names[i]] = _walletAddresses[i];
+            charityAddresses.push(_walletAddresses[i]);
+            
+            // Emit event for each charity
+            emit CharityAdded(_walletAddresses[i], _names[i], block.timestamp);
+        }
     }
     
     /**
