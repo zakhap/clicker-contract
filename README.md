@@ -68,35 +68,99 @@ forge test --gas-report
 
 # Run with coverage
 forge coverage
+
+# Run all tests with verbose output
+forge test -vv
+
+# Format code
+forge fmt
 ```
 
-### Local Development
+### Local Development & Deployment
 
+#### Step 1: Start Local Blockchain
 ```bash
-# Start local testnet
+# Terminal 1 - Start local blockchain (anvil)
 anvil
 
-# Deploy to local testnet
-forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast --private-key <your-private-key>
+# This will start a local Ethereum node on http://localhost:8545
+# It provides 10 test accounts with 10,000 ETH each
+# The first account's private key: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
-### Deployment
+#### Step 2: Deploy Contract Locally
+```bash
+# Terminal 2 - Deploy the CharityRouter contract
+forge script script/Deploy.s.sol \
+  --rpc-url http://localhost:8545 \
+  --broadcast \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+  -v
+
+# This will:
+# 1. Deploy the CharityRouter contract
+# 2. Add 3 sample charities (American Red Cross, Doctors Without Borders, Save the Children)
+# 3. Transfer ownership to a specified address
+# 4. Show detailed deployment information
+```
+
+#### Step 3: Test Deployment (Optional)
+```bash
+# Dry run (simulation only - no actual deployment)
+forge script script/Deploy.s.sol --rpc-url http://localhost:8545 -v
+
+# Check deployment with specific verbosity
+forge script script/Deploy.s.sol \
+  --rpc-url http://localhost:8545 \
+  --broadcast \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+  -vvv  # Extra verbose output
+```
+
+### Testnet/Mainnet Deployment
 
 #### Base Sepolia (Testnet)
 ```bash
-forge script script/Deploy.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast --verify --private-key $PRIVATE_KEY
+forge script script/Deploy.s.sol \
+  --rpc-url $BASE_SEPOLIA_RPC_URL \
+  --broadcast \
+  --verify \
+  --private-key $PRIVATE_KEY
 ```
 
 #### Base Mainnet
 ```bash
-forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL --broadcast --verify --private-key $PRIVATE_KEY
+forge script script/Deploy.s.sol \
+  --rpc-url $BASE_RPC_URL \
+  --broadcast \
+  --verify \
+  --private-key $PRIVATE_KEY
 ```
 
-### Adding Charities
+### Interacting with Deployed Contract
+
+After deployment, you can interact with the contract using `cast`:
 
 ```bash
-# Add charities in batch
-forge script script/AddCharities.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast --private-key $PRIVATE_KEY
+# Get contract info
+cast call <CONTRACT_ADDRESS> "getVersion()" --rpc-url http://localhost:8545
+
+# Get charity count
+cast call <CONTRACT_ADDRESS> "getCharityCount()" --rpc-url http://localhost:8545
+
+# Make a donation (0.1 ETH to first charity)
+cast send <CONTRACT_ADDRESS> \
+  "donate(address)" <CHARITY_ADDRESS> \
+  --value 0.1ether \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+  --rpc-url http://localhost:8545
+
+# Donate by name
+cast send <CONTRACT_ADDRESS> \
+  "donateByName(string)" "American Red Cross" \
+  --value 0.5ether \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+  --rpc-url http://localhost:8545
 ```
 
 ## Contract Interface
@@ -128,6 +192,28 @@ function getCharityByName(string memory _name) external view returns (Charity me
 
 // Get all registered charities
 function getAllCharities() external view returns (address[] memory)
+
+// Get charity statistics
+function getCharityStats(address _charityAddress) external view returns (
+    string memory name_,
+    bool isActive_,
+    uint256 totalEthReceived_,
+    uint256 donationCount_,
+    uint256 registeredAt_
+)
+
+// Get total platform statistics
+function getTotalStats() external view returns (
+    uint256 totalCharities_,
+    uint256 activeCharities_,
+    uint256 totalDonations_,
+    uint256 totalEthRouted_,
+    uint256 averageDonationSize_
+)
+
+// Validation helpers
+function isValidCharity(address _charityAddress) external view returns (bool)
+function isValidCharityName(string memory _charityName) external view returns (bool)
 ```
 
 ## Events
@@ -146,37 +232,75 @@ event CharityAdded(
     string name,
     uint256 timestamp
 );
+
+event CharityUpdated(
+    address indexed charityAddress,
+    string oldName,
+    string newName
+);
+
+event CharityRemoved(
+    address indexed charityAddress,
+    string name
+);
+
+event CharityStatusChanged(
+    address indexed charityAddress,
+    bool isActive
+);
 ```
 
 ## Security Features
 
 - **ReentrancyGuard**: Protection against reentrancy attacks
-- **Access Control**: Admin-only charity management
+- **Access Control**: Admin-only charity management using OpenZeppelin's Ownable2Step
 - **Input Validation**: Comprehensive parameter validation
 - **Zero Address Protection**: Prevents operations on removed charities
 - **Direct Transfer**: Immediate ETH routing to charities
+- **Custom Errors**: Gas-efficient, descriptive error handling
 
 ## Gas Optimization
 
-- **No Storage**: Donations don't store transaction data
+- **No Storage**: Donations don't store transaction data on-chain
 - **Packed Structs**: Optimized storage layout
-- **Custom Errors**: Gas-efficient error handling
+- **Custom Errors**: Gas-efficient error handling vs require strings
 - **Batch Operations**: Efficient multi-charity registration
+- **Direct Routing**: No intermediate storage or complex logic
+
+## Test Coverage
+
+The project includes comprehensive test suites covering:
+
+- **Basic functionality** (ownership, charity CRUD operations)
+- **Donation mechanics** (both by address and by name)
+- **Batch operations** and edge cases
+- **View functions** and statistics accuracy
+- **Security features** (reentrancy protection, access control)
+- **Error handling** and validation
+- **Integration scenarios** and complex workflows
+
+```bash
+# Run specific test suites
+forge test --match-contract CharityRouterTest              # Basic functionality
+forge test --match-contract CharityRouterDonationTest      # Donation features  
+forge test --match-contract CharityRouterStep8Test         # Donation by name
+forge test --match-contract CharityRouterViewFunctionsTest # View functions & stats
+```
 
 ## Project Structure
 
 ```
 ├── src/
-│   ├── CharityRouter.sol          # Main contract
-│   └── interfaces/
-│       └── ICharityRouter.sol     # Contract interface
+│   └── CharityRouter.sol          # Main contract
 ├── test/
-│   ├── CharityRouter.t.sol        # Main test file
-│   └── utils/
-│       └── TestHelpers.sol        # Test utilities
+│   ├── CharityRouter.t.sol        # Basic functionality tests
+│   ├── CharityRouterStep4.t.sol   # Charity management tests
+│   ├── CharityRouterStep5.t.sol   # Batch operations tests
+│   ├── CharityRouterDonation.t.sol # Donation functionality tests
+│   ├── CharityRouterStep8.t.sol   # Donation by name tests
+│   └── CharityRouterViewFunctions.t.sol # View functions tests
 ├── script/
-│   ├── Deploy.s.sol               # Deployment script
-│   └── AddCharities.s.sol         # Charity management script
+│   └── Deploy.s.sol               # Deployment script
 └── foundry.toml                   # Foundry configuration
 ```
 
@@ -184,9 +308,10 @@ event CharityAdded(
 
 1. Fork the repository
 2. Create a feature branch
-3. Make changes with tests
-4. Run the full test suite
-5. Submit a pull request
+3. Make changes with comprehensive tests
+4. Run the full test suite (`forge test`)
+5. Format code (`forge fmt`)
+6. Submit a pull request
 
 ## License
 
@@ -194,58 +319,54 @@ MIT
 
 ## Roadmap
 
-### V1 (Current)
+### V1 (Current) ✅
 - [x] ETH donation routing
-- [x] Charity management
-- [x] Event tracking
-- [x] Batch operations
+- [x] Charity management (CRUD operations)
+- [x] Event tracking and transparency
+- [x] Batch operations for efficiency
+- [x] Donation by name functionality
+- [x] Comprehensive view functions and statistics
+- [x] Security hardening and access control
 
 ### V2 (Planned)
-- [ ] ERC20 token support (USDC)
+- [ ] ERC20 token support (USDC, USDT)
 - [ ] USD price oracle integration
-- [ ] Enhanced analytics
+- [ ] Enhanced analytics and reporting
 - [ ] Multi-signature admin support
+- [ ] Charity verification system
+- [ ] Donation matching/multiplier features
 
 ## Foundry Commands Reference
 
-### Build
+### Build & Test
 ```shell
-forge build
+forge build                # Compile contracts
+forge test                 # Run all tests
+forge test -vv             # Verbose test output
+forge test --gas-report    # Include gas usage
+forge coverage             # Test coverage report
+forge fmt                  # Format code
 ```
 
-### Test
+### Development
 ```shell
-forge test
+anvil                      # Start local blockchain
+forge script <script>     # Run deployment script
+cast <command>             # Interact with contracts
 ```
 
-### Format
+### Deployment
 ```shell
-forge fmt
-```
+# Local deployment
+forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast --private-key <key>
 
-### Gas Snapshots
-```shell
-forge snapshot
-```
-
-### Local Node
-```shell
-anvil
-```
-
-### Deploy
-```shell
-forge script script/Deploy.s.sol --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast (Blockchain Interaction)
-```shell
-cast <subcommand>
+# Testnet deployment
+forge script script/Deploy.s.sol --rpc-url <testnet_url> --broadcast --verify --private-key <key>
 ```
 
 ### Help
 ```shell
 forge --help
-anvil --help
+anvil --help  
 cast --help
 ```
