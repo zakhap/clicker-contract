@@ -46,6 +46,31 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
     /// @notice Array of all registered charity addresses
     address[] public charityAddresses;
     
+    // ===== EVENTS =====
+    
+    /**
+     * @notice Emitted when a new charity is added to the registry
+     * @param charityAddress Address of the charity wallet
+     * @param name Name of the charity
+     * @param timestamp When the charity was registered
+     */
+    event CharityAdded(
+        address indexed charityAddress,
+        string name,
+        uint256 timestamp
+    );
+    
+    // ===== ERRORS =====
+    
+    /// @notice Thrown when trying to register a charity with zero address
+    error InvalidCharityAddress();
+    
+    /// @notice Thrown when trying to register a charity with empty name
+    error EmptyCharityName();
+    
+    /// @notice Thrown when trying to register a charity that already exists
+    error CharityAlreadyExists();
+    
     // ===== CONSTRUCTOR =====
     
     /**
@@ -54,6 +79,52 @@ contract CharityRouter is Ownable2Step, ReentrancyGuard {
      */
     constructor(address _initialOwner) Ownable(_initialOwner) {
         // Constructor sets initial owner via Ownable
+    }
+    
+    // ===== ADMIN FUNCTIONS =====
+    
+    /**
+     * @notice Add a new charity to the registry
+     * @param _name Human-readable name of the charity
+     * @param _walletAddress Address where donations will be sent
+     * @dev Only contract owner can call this function
+     */
+    function addCharity(string memory _name, address payable _walletAddress) external onlyOwner {
+        // Validate inputs
+        if (_walletAddress == address(0)) {
+            revert InvalidCharityAddress();
+        }
+        
+        if (bytes(_name).length == 0) {
+            revert EmptyCharityName();
+        }
+        
+        // Check for duplicates
+        if (charitiesByAddress[_walletAddress].walletAddress != address(0)) {
+            revert CharityAlreadyExists();
+        }
+        
+        if (charitiesByName[_name] != address(0)) {
+            revert CharityAlreadyExists();
+        }
+        
+        // Create charity struct
+        Charity memory newCharity = Charity({
+            name: _name,
+            walletAddress: _walletAddress,
+            isActive: true, // New charities are active by default
+            totalEthReceived: 0,
+            donationCount: 0,
+            registeredAt: block.timestamp
+        });
+        
+        // Store in mappings
+        charitiesByAddress[_walletAddress] = newCharity;
+        charitiesByName[_name] = _walletAddress;
+        charityAddresses.push(_walletAddress);
+        
+        // Emit event
+        emit CharityAdded(_walletAddress, _name, block.timestamp);
     }
     
     // ===== VIEW FUNCTIONS =====

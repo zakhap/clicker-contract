@@ -10,6 +10,9 @@ contract CharityRouterTest is Test {
     address public newOwner;
     address public notOwner;
 
+    // Add event declaration for testing
+    event CharityAdded(address indexed charityAddress, string name, uint256 timestamp);
+
     function setUp() public {
         // Set up test addresses
         owner = makeAddr("owner");
@@ -174,5 +177,131 @@ contract CharityRouterTest is Test {
         // Test we can't access non-existent array elements
         vm.expectRevert();
         router.charityAddresses(0);
+    }
+
+    // ===== STEP 3 TESTS: Single Charity Registration =====
+
+    function testStep3_SuccessfulCharityAddition() public {
+        // Set up charity data
+        string memory charityName = "Red Cross";
+        address payable charityAddress = payable(makeAddr("redCross"));
+        
+        // Add charity as owner
+        vm.prank(owner);
+        router.addCharity(charityName, charityAddress);
+        
+        // Verify charity count increased
+        assertEq(router.getCharityCount(), 1);
+        
+        // Verify charity is stored correctly by address
+        CharityRouter.Charity memory charityByAddr = router.getCharityByAddress(charityAddress);
+        assertEq(charityByAddr.name, charityName);
+        assertEq(charityByAddr.walletAddress, charityAddress);
+        assertTrue(charityByAddr.isActive);
+        assertEq(charityByAddr.totalEthReceived, 0);
+        assertEq(charityByAddr.donationCount, 0);
+        assertGt(charityByAddr.registeredAt, 0); // Should be current timestamp
+        
+        // Verify charity is stored correctly by name
+        CharityRouter.Charity memory charityByName = router.getCharityByName(charityName);
+        assertEq(charityByName.name, charityName);
+        assertEq(charityByName.walletAddress, charityAddress);
+        assertTrue(charityByName.isActive);
+        
+        // Verify address array is updated
+        assertEq(router.charityAddresses(0), charityAddress);
+    }
+
+    function testStep3_CharityAddedEventEmission() public {
+        string memory charityName = "UNICEF";
+        address payable charityAddress = payable(makeAddr("unicef"));
+        
+        // Expect event emission
+        vm.expectEmit(true, false, false, true);
+        emit CharityAdded(charityAddress, charityName, block.timestamp);
+        
+        vm.prank(owner);
+        router.addCharity(charityName, charityAddress);
+    }
+
+    function testStep3_DuplicateAddressPrevention() public {
+        string memory firstName = "Red Cross";
+        string memory secondName = "Different Name";
+        address payable sameAddress = payable(makeAddr("sameAddr"));
+        
+        // Add first charity
+        vm.prank(owner);
+        router.addCharity(firstName, sameAddress);
+        
+        // Try to add second charity with same address
+        vm.prank(owner);
+        vm.expectRevert(CharityRouter.CharityAlreadyExists.selector);
+        router.addCharity(secondName, sameAddress);
+    }
+
+    function testStep3_DuplicateNamePrevention() public {
+        string memory sameName = "Red Cross";
+        address payable firstAddress = payable(makeAddr("firstAddr"));
+        address payable secondAddress = payable(makeAddr("secondAddr"));
+        
+        // Add first charity
+        vm.prank(owner);
+        router.addCharity(sameName, firstAddress);
+        
+        // Try to add second charity with same name
+        vm.prank(owner);
+        vm.expectRevert(CharityRouter.CharityAlreadyExists.selector);
+        router.addCharity(sameName, secondAddress);
+    }
+
+    function testStep3_OnlyOwnerCanAdd() public {
+        string memory charityName = "Test Charity";
+        address payable charityAddress = payable(makeAddr("testCharity"));
+        
+        // Try to add charity as non-owner
+        vm.prank(notOwner);
+        vm.expectRevert(); // Should revert with Ownable error
+        router.addCharity(charityName, charityAddress);
+        
+        // Verify no charity was added
+        assertEq(router.getCharityCount(), 0);
+    }
+
+    function testStep3_ZeroAddressRejection() public {
+        string memory charityName = "Invalid Charity";
+        
+        vm.prank(owner);
+        vm.expectRevert(CharityRouter.InvalidCharityAddress.selector);
+        router.addCharity(charityName, payable(address(0)));
+    }
+
+    function testStep3_EmptyNameRejection() public {
+        address payable charityAddress = payable(makeAddr("validAddress"));
+        
+        vm.prank(owner);
+        vm.expectRevert(CharityRouter.EmptyCharityName.selector);
+        router.addCharity("", charityAddress);
+    }
+
+    function testStep3_MappingConsistency() public {
+        string memory charityName = "Doctors Without Borders";
+        address payable charityAddress = payable(makeAddr("doctors"));
+        
+        vm.prank(owner);
+        router.addCharity(charityName, charityAddress);
+        
+        // Test that both mappings point to the same data
+        assertEq(router.charitiesByName(charityName), charityAddress);
+        
+        CharityRouter.Charity memory charityByAddr = router.getCharityByAddress(charityAddress);
+        CharityRouter.Charity memory charityByName = router.getCharityByName(charityName);
+        
+        // Both should return identical data
+        assertEq(charityByAddr.name, charityByName.name);
+        assertEq(charityByAddr.walletAddress, charityByName.walletAddress);
+        assertEq(charityByAddr.isActive, charityByName.isActive);
+        assertEq(charityByAddr.totalEthReceived, charityByName.totalEthReceived);
+        assertEq(charityByAddr.donationCount, charityByName.donationCount);
+        assertEq(charityByAddr.registeredAt, charityByName.registeredAt);
     }
 }
